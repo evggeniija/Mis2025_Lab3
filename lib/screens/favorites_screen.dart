@@ -1,35 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/recipe_service.dart';
-import '../widgets/recipe_card.dart';
+import '../providers/favorites_provider.dart';
+import 'meal_detail_screen.dart';
 
 class FavoritesScreen extends StatelessWidget {
   const FavoritesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final recipeService = Provider.of<RecipeService>(context);
-    final favorites = recipeService.favoriteRecipes;
+    final favorites = context.watch<FavoritesProvider>().favorites;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Favorite Recipes'),
-      ),
-      body: favorites.isEmpty
-          ? const Center(child: Text('No favorites yet.'))
-          : ListView.builder(
-        itemCount: favorites.length,
-        itemBuilder: (context, index) {
-          final recipe = favorites[index];
-          return RecipeCard(
-            recipe: recipe,
-            onTap: () {},
-            onToggleFavorite: () {
-              recipeService.toggleFavorite(recipe.id);
-            },
-          );
-        },
-      ),
+    if (favorites.isEmpty) {
+      return const Center(child: Text('No favorite recipes yet.'));
+    }
+
+    return ListView.builder(
+      itemCount: favorites.length,
+      itemBuilder: (context, index) {
+        final meal = favorites[index];
+        return ListTile(
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              meal.thumbnail,
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+            ),
+          ),
+          title: Text(meal.name),
+          subtitle: Text(meal.category ?? ''),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MealDetailScreen(mealId: meal.id, meal: meal),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

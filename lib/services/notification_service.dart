@@ -1,51 +1,95 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 class NotificationService {
-  NotificationService._();
-  static final NotificationService _instance = NotificationService._();
-  factory NotificationService() => _instance;
-
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  static final FlutterLocalNotificationsPlugin _plugin =
   FlutterLocalNotificationsPlugin();
 
-  Future<void> init() async {
-    const AndroidInitializationSettings androidSettings =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
+  // Platforms where zonedSchedule is actually supported
+  static bool get _isSchedulingSupported {
+    if (kIsWeb) return false; // plugin not really for web scheduling
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+        return true;
 
-    const InitializationSettings initSettings =
-    InitializationSettings(android: androidSettings);
-
-    await flutterLocalNotificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Optional: handle tap when app already open
-      },
-    );
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return false;
+    }
   }
 
-  Future<void> showSimpleNotification({
-    required String title,
-    required String body,
-    String? payload,
-  }) async {
-    const AndroidNotificationDetails androidDetails =
-    AndroidNotificationDetails(
-      'recipe_channel',
-      'Recipe Notifications',
-      channelDescription: 'Notifications about recipes',
+  static Future<void> init() async {
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosInit = DarwinInitializationSettings();
+
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+      // Windows initialization can be added if needed,
+      // but this minimal config already works.
+    );
+
+    await _plugin.initialize(initSettings);
+
+    // Timezone data only needed if we're going to schedule
+    if (_isSchedulingSupported) {
+      tz.initializeTimeZones();
+    }
+  }
+
+  static Future<void> scheduleDailyRandomMealReminder(
+      TimeOfDay timeOfDay) async {
+    if (!_isSchedulingSupported) {
+      debugPrint(
+          '⛔ scheduleDailyRandomMealReminder: scheduling not supported on this platform.');
+      return;
+    }
+
+    // Use TZDateTime directly in local timezone
+    final now = tz.TZDateTime.now(tz.local);
+
+    var scheduledDate = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      timeOfDay.hour,
+      timeOfDay.minute,
+    );
+
+    // If the time today has already passed, schedule for tomorrow
+    if (scheduledDate.isBefore(now)) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+
+    const androidDetails = AndroidNotificationDetails(
+      'daily_random_meal_channel',
+      'Daily Random Meal',
+      channelDescription: 'Daily reminder to open app and see random meal',
       importance: Importance.max,
       priority: Priority.high,
     );
 
-    const NotificationDetails platformDetails =
-    NotificationDetails(android: androidDetails);
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+    );
 
-    await flutterLocalNotificationsPlugin.show(
+    await _plugin.zonedSchedule(
       0,
-      title,
-      body,
-      platformDetails,
-      payload: payload,
+      'Random recipe of the day',
+      'Open the app to discover today\'s random meal!',
+      scheduledDate,
+      notificationDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+      UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 }
